@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yangon TV - Dashboard</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
+        body { background-color: #000; color: #fff; font-family: 'Inter', sans-serif; margin: 0; }
+        .glass-card { background: #0a0a0a; border: 1px solid #1e293b; border-radius: 2rem; }
+        .profile-frame { border: 2px solid #334155; padding: 4px; border-radius: 512px; transition: all 0.3s ease; }
+        .history-card { background: #0f172a80; border: 1px solid #1e293b; border-radius: 1.2rem; transition: all 0.3s ease; }
+        .page-fade { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        /* Loading Spinner */
+        .loader { width: 12px; height: 12px; border: 2px solid #fff; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-4 pb-10 page-fade">
+
+    <header class="max-w-xl mx-auto py-8 text-center">
+        <div class="flex flex-col items-center gap-4 mb-4">
+            <div id="user-photo-container" class="hidden">
+                <div class="profile-frame">
+                    <img id="user-photo" src="" alt="Profile" class="w-20 h-20 rounded-full object-cover border-2 border-rose-600">
+                </div>
+            </div>
+            <div id="user-default-icon" class="w-20 h-20 rounded-full profile-frame bg-zinc-900 flex items-center justify-center border-dashed border-zinc-700">
+                <span class="text-3xl font-black text-zinc-700 uppercase" id="user-initial">Y</span>
+            </div>
+            
+            <div>
+                <h1 id="user-name" class="text-2xl font-black text-white italic tracking-tight uppercase">Loading User...</h1>
+                <div class="flex items-center justify-center gap-2 mt-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                    <p id="user-id" class="text-rose-500 text-[10px] uppercase tracking-[0.2em] font-bold italic">ID: Unknown</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-xl mx-auto space-y-4">
+        <div class="glass-card p-8 text-center border-zinc-800/50 shadow-2xl shadow-rose-900/5">
+            <p class="text-zinc-500 text-[10px] uppercase font-black mb-1 tracking-widest">Total Edited Files</p>
+            <h3 id="stat-count" class="text-5xl font-black text-white tracking-tighter">0</h3>
+        </div>
+
+        <div class="glass-card p-6 min-h-[300px]">
+            <div class="flex justify-between items-center mb-6 border-b border-zinc-900 pb-3">
+                <div class="flex items-center gap-2">
+                    <h4 class="text-[10px] font-black uppercase tracking-widest text-zinc-400">Activity Log</h4>
+                    <span id="sync-loader" class="hidden"><span class="loader"></span></span>
+                </div>
+                <button onclick="clearAllHistory()" class="text-[9px] font-bold text-zinc-600 uppercase hover:text-rose-500 transition-colors">Clear All</button>
+            </div>
+            
+            <div id="user-history" class="space-y-3">
+                <div class="text-center py-20">
+                    <p class="text-zinc-800 font-bold uppercase text-[10px] tracking-[0.2em]">No History Found</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3">
+            <a href="index.html" class="block w-full text-center bg-zinc-900 border border-zinc-800 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-zinc-300 active:scale-95 transition-all">
+                ← Back to Editor
+            </a>
+        </div>
+    </main>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        // အရေးကြီးသည်- ညီ့ရဲ့ Google Web App URL ကို ဒီမှာ အစားထိုးပါ
+        const BACKEND_URL = 'YOUR_DEPLOYED_GOOGLE_SCRIPT_URL';
+
+        function loadUserData() {
+            const user = tg.initDataUnsafe?.user;
+            if (user) {
+                document.getElementById('user-name').innerText = user.first_name + (user.last_name ? " " + user.last_name : "");
+                document.getElementById('user-id').innerText = "ID: " + user.id;
+                document.getElementById('user-initial').innerText = user.first_name.charAt(0);
+                
+                if (user.photo_url) {
+                    document.getElementById('user-photo').src = user.photo_url;
+                    document.getElementById('user-photo-container').classList.remove('hidden');
+                    document.getElementById('user-default-icon').classList.add('hidden');
+                }
+            } else {
+                document.getElementById('user-name').innerText = "Yangon TV User";
+            }
+        }
+
+        async function renderDashboard() {
+            // ၁။ အရင်ဆုံး Local Storage ထဲကဟာကို အရင်ပြမယ်
+            const localCount = localStorage.getItem('ytv_user_count') || 0;
+            document.getElementById('stat-count').innerText = localCount;
+            
+            let localHistory = JSON.parse(localStorage.getItem('ytv_user_history') || "[]");
+            displayHistory(localHistory);
+
+            // ၂။ Backend ကနေ Online Data လှမ်းဆွဲမယ်
+            const user = tg.initDataUnsafe?.user;
+            if (user && BACKEND_URL !== 'YOUR_DEPLOYED_GOOGLE_SCRIPT_URL') {
+                document.getElementById('sync-loader').classList.remove('hidden');
+                try {
+                    const response = await fetch(`${BACKEND_URL}?userId=${user.id}`);
+                    const onlineData = await response.json();
+                    
+                    if (onlineData && Array.isArray(onlineData)) {
+                        // Online ကရတဲ့ဒေတာကို Display လုပ်မယ်
+                        displayHistory(onlineData);
+                        document.getElementById('stat-count').innerText = onlineData.length;
+                        
+                        // Local နဲ့ Sync လုပ်ချင်ရင် (Optional)
+                        localStorage.setItem('ytv_user_count', onlineData.length.toString());
+                        localStorage.setItem('ytv_user_history', JSON.stringify(onlineData.slice(-15))); 
+                    }
+                } catch (e) {
+                    console.error("Backend Sync Failed:", e);
+                } finally {
+                    document.getElementById('sync-loader').classList.add('hidden');
+                }
+            }
+        }
+
+        function displayHistory(history) {
+            const list = document.getElementById('user-history');
+            if(history.length > 0) {
+                list.innerHTML = history.map((item, idx) => `
+                    <div class="history-card p-4 flex justify-between items-center border-l-4 ${item.status==='Success' || item.status==='Saved to Drive' ?'border-emerald-500':'border-rose-500'}">
+                        <div class="max-w-[65%]">
+                            <p class="text-[12px] font-black text-zinc-200 truncate leading-tight">${item.name}</p>
+                            <p class="text-[9px] text-zinc-600 font-mono mt-1">${new Date(item.date).toLocaleString('my-MM')}</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[8px] font-black px-2 py-1 rounded bg-black border border-zinc-800 text-emerald-500">DONE</span>
+                            <button onclick="deleteSingleHistory(${idx})" class="p-2 bg-rose-500/10 rounded-lg active:scale-75 transition-all">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `).reverse().join('');
+            } else {
+                list.innerHTML = `<div class="text-center py-20"><p class="text-zinc-800 font-bold uppercase text-[10px] tracking-[0.2em]">No History Found</p></div>`;
+            }
+        }
+
+        function deleteSingleHistory(index) {
+            let history = JSON.parse(localStorage.getItem('ytv_user_history') || "[]");
+            history.splice(index, 1);
+            localStorage.setItem('ytv_user_history', JSON.stringify(history));
+            
+            let currentCount = parseInt(localStorage.getItem('ytv_user_count') || "0");
+            if(currentCount > 0) localStorage.setItem('ytv_user_count', (currentCount - 1).toString());
+            
+            if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+            renderDashboard();
+        }
+
+        function clearAllHistory() {
+            if(confirm("သမိုင်းကြောင်းအားလုံးကို ဖျက်မှာ သေချာလား? (Local records only)")) {
+                localStorage.removeItem('ytv_user_history');
+                localStorage.setItem('ytv_user_count', '0');
+                renderDashboard();
+                if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+            }
+        }
+
+        window.onload = function() {
+            loadUserData();
+            renderDashboard();
+            tg.expand();
+        };
+    </script>
+</body>
+</html>
