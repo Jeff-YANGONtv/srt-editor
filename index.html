@@ -57,7 +57,8 @@
     <script>
         const BOT_TOKEN = '8069487397:AAHtsni-K1sFyOL1-MnvtooIYmEiZDohKYo';
         const CHAT_ID = '-1003745560690';
-        const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyoZTdhKIhBPVhJLJ9onp55iW46xH8rJ0B4plty0_5xRyArV_zBmFgQt_5UFV8if5nIpw/exec';
+        // ညီပေးတဲ့ Web App URL ကို ဒီမှာ ထည့်ပေးထားတယ်
+        const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwPQAM-2TsPklAKb4nxLrEvlhJd1Kq06LxybPiQXA-4LXQeZsUrI9phuzgfL9asKU01sQ/exec';
 
         const tg = window.Telegram.WebApp;
         let srtObjects = []; let fileName = ""; let errorIndices = []; let currentPointer = -1;
@@ -98,28 +99,47 @@
             const btn = document.getElementById('sendBtn'); btn.innerText = "..."; btn.disabled = true;
 
             const senderName = tg.initDataUnsafe?.user?.first_name || "Unknown";
-            let movieTitle = "Unknown Movie", finalName = `Fixed_${fileName}`;
-            let match = fileName.match(/(.*?)(?:s)?(\d+)(?:e|ep)(\d+)/i);
+            let movieTitle = "Unknown Movie", sNum = "01", eNum = "01";
+            let cleanFileName = fileName.replace(/\.[^/.]+$/, "");
+
+            // Regex ပြင်ပြီး Movie, Season, Episode ကို ခွဲထုတ်ခြင်း
+            let match = fileName.match(/(.*?)(?:[sS])?(\d+)(?:[eE]|[eE][pP])(\d+)/i);
             if(match) {
                 movieTitle = match[1].replace(/[^a-zA-Z0-9]/g,' ').trim().toUpperCase();
-                finalName = `${movieTitle.replace(/\s+/g,'')}_S${match[2]}_EP${match[3]}_fixedby_${senderName}.srt`;
+                sNum = match[2];
+                eNum = match[3];
+            } else {
+                movieTitle = cleanFileName.split(/[sS]\d+|[eE]\d+|_|fixed|Fixed/)[0].replace(/[^a-zA-Z0-9]/g,' ').trim().toUpperCase();
             }
+
+            if (!movieTitle) movieTitle = "YTV MOVIE";
+            let finalFileName = `${movieTitle.replace(/\s+/g,'')}_S${sNum}_E${eNum}_fixedby_${senderName}.srt`;
 
             let out = srtObjects.map((o,i) => `${i+1}\r\n${o.time}\r\n${o.content}\r\n\r\n`).join('');
             const fd = new FormData();
             fd.append('chat_id', CHAT_ID);
-            fd.append('document', new Blob([out], {type:'text/plain'}), finalName);
-            fd.append('caption', `${movieTitle}\n👤 - ${senderName}\nSuccess ✅`);
+            fd.append('document', new Blob([out], {type:'text/plain'}), finalFileName);
+            fd.append('caption', `🎬 **${movieTitle}**\n━━━━━━━━━━━━━━\n🎞 Season: ${sNum} | Episode: ${eNum}\n👤 Editor: ${senderName}\n✅ Done Successfully`);
 
             try {
                 const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, { method: 'POST', body: fd });
                 if(res.ok) {
                     btn.innerText = "SENT ✅";
-                    fetch(BACKEND_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({
-                        userId: tg.initDataUnsafe?.user?.id || 'Unknown',
-                        userName: senderName, fileName: finalName, movieTitle: movieTitle, srtContent: out
-                    })});
-                    saveToLocal(finalName);
+                    // Backend Webhook ဆီကို ဒေတာတွေ ပို့မယ်
+                    fetch(BACKEND_URL, { 
+                        method: 'POST', 
+                        mode: 'no-cors', 
+                        body: JSON.stringify({
+                            userId: tg.initDataUnsafe?.user?.id || 'Unknown',
+                            userName: senderName, 
+                            fileName: finalFileName, 
+                            movieTitle: movieTitle, 
+                            season: sNum,
+                            episode: eNum,
+                            srtContent: out
+                        })
+                    });
+                    saveToLocal(finalFileName);
                 } else throw Error();
             } catch(e) { btn.innerText = "FAIL ❌"; }
             setTimeout(() => { btn.innerText = "Telegram"; btn.disabled = false; }, 2000);
@@ -129,7 +149,6 @@
             let h = JSON.parse(localStorage.getItem('ytv_user_history') || "[]");
             h.push({ name: name, date: new Date().toLocaleString(), status: 'Success' });
             localStorage.setItem('ytv_user_history', JSON.stringify(h.slice(-15)));
-            localStorage.setItem('ytv_user_count', (parseInt(localStorage.getItem('ytv_user_count') || "0") + 1).toString());
         }
 
         function autoCleanNoise() {
